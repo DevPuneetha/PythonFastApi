@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Date
 from database import Base
+from pydantic import BaseModel
 
 
 class Citizen(Base):
@@ -16,3 +17,15 @@ class Citizen(Base):
     type_of_visa = Column(String(50))
     visa_expire_date = Column(Date)
     purpose_stay = Column(String(255))
+
+class CreateCitizen(BaseModel):
+    passport_number: str
+    citizen_name: str
+    from_country: str
+    living_country: str
+    living_country_code: str
+    citizenship_category: str
+    passport_status: str
+    type_of_visa: str
+    visa_expire_date: str
+    purpose_stay : str
