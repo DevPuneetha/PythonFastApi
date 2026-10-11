@@ -29,3 +29,15 @@ class CreateCitizen(BaseModel):
     type_of_visa: str
     visa_expire_date: str
     purpose_stay : str
+
+class patchCitizen(BaseModel):
+    passport_number: str | None = None
+    citizen_name: str | None = None
+    from_country: str | None = None
+    living_country: str | None = None
+    living_country_code: str | None = None
+    citizenship_category: str | None = None
+    passport_status: str | None = None
+    type_of_visa: str | None = None
+    visa_expire_date: str | None = None
+    purpose_stay : str | None = None

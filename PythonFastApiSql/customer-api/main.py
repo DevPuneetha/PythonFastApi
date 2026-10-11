@@ -1,11 +1,11 @@
 import logging
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import text
 
 from database import get_db
-from models import Citizen, CreateCitizen
+from models import Citizen, CreateCitizen, patchCitizen
 
 app = FastAPI()
 
@@ -50,6 +50,22 @@ def get_citizens(
         return {"message":"No Citizen Found"}
     else:
         return result
+
+
+@app.head("/citizens")
+def head_citizens():
+    return Response(
+        status_code=status.HTTP_200_OK,
+        headers={"Allow": "GET, HEAD, OPTIONS"}
+    )
+
+
+@app.options("/citizens")
+def options_citizens():
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={"Allow": "GET, HEAD, OPTIONS"}
+    )
 
     
 # get api fetch by id - Path Params
@@ -254,23 +270,89 @@ def update_citizen_data(
 # PATCH API
 
 
-# DELETE API
-# DELETE FROM Customers WHERE CustomerName='Alfreds Futterkiste';
 @app.delete("/citizen/deleteData/{citizen_id}")
 def remove_citizen(
     citizen_id: int,
     db: Session = Depends(get_db)
 ):
-    # Raw SQL
-    query = db.execute(text(
-        "DELETE FROM citizens WHERE citizen_id = :citizen_id"
-    ),{"citizen_id": citizen_id}
-    )
+    try:
+        query = text("""
+            DELETE FROM citizens
+            WHERE citizen_id = :citizen_id
+        """)
 
-    # SQL Alchemy
-    record = db.query(Citizen).get(citizen_id)
-    db.delete(record)
-    return {
-        "message":"Data Deleted SuccessFully",
-        "citizen_id": citizen_id
+        result = db.execute(
+            query,
+            {"citizen_id": citizen_id}
+        )
+
+        # Check whether a record was deleted
+        if result.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Citizen not found"
+            )
+
+        db.commit()
+
+        return {
+            "message": "Data deleted successfully",
+            "citizen_id": citizen_id
         }
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while deleting citizen"
+        )
+
+# Patch Method
+# use update query for specific fields
+@app.patch("/citizen/{citizen_id}")
+def update_specific_field(
+    citizen_id: int,
+    requestBody: patchCitizen,
+    db: Session = Depends(get_db)
+):
+    try:
+        citizen = db.query(Citizen).filter(
+            Citizen.citizen_id == citizen_id
+        ).first()
+
+        if citizen is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Citizen not found"
+            )
+
+        for field, value in requestBody.model_dump(exclude_unset=True).items():
+            setattr(citizen, field, value)
+
+        db.commit()
+        db.refresh(citizen)
+        logger.info("Citizen %s updated successfully", citizen_id)
+        return {
+            "success": True,
+            "message": "Citizen updated successfully",
+            "data": citizen
+        }
+    except HTTPException:
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        logger.exception("Citizen %s update failed due to a database constraint", citizen_id)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Citizen update failed due to a database constraint"
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Database error while updating citizen %s", citizen_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while updating citizen"
+        ) from exc
